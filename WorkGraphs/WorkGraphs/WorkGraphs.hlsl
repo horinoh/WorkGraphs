@@ -114,9 +114,9 @@ void ThirdNode(
     }
 
     Barrier(GROUP_SHARED_MEMORY, GROUP_SCOPE | GROUP_SYNC);
-
-    InterlockedAdd(g_sum[InputData[ThreadIndex].RecordIndex], 1);
-
+    {
+        InterlockedAdd(g_sum[InputData[ThreadIndex].RecordIndex], 1);
+    }
     Barrier(GROUP_SHARED_MEMORY, GROUP_SCOPE | GROUP_SYNC);
 
     //!< 0 番のスレッドが集計するので、他のスレッドはここまで

@@ -7,6 +7,7 @@
 #define MAX_LOADSTRING 100
 
 #include <array>
+#include <algorithm>
 #include <format>
 #include <filesystem>
 
@@ -279,32 +280,135 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
         //!< バッキングメモリ
         CComPtr<ID3D12Resource> BackingMemory;
-        CComPtr<ID3D12WorkGraphProperties> WGP;
-        WGP = SO;
-        D3D12_WORK_GRAPH_MEMORY_REQUIREMENTS WGMR;
-        WGP->GetWorkGraphMemoryRequirements(WGP->GetWorkGraphIndex(WGD.ProgramName), &WGMR);
-        const D3D12_RESOURCE_DESC RD = {
-            .Dimension= D3D12_RESOURCE_DIMENSION_BUFFER,
-            .Alignment = 0,
-            .Width = WGMR.MaxSizeInBytes, .Height = 1, .DepthOrArraySize = 1, .MipLevels = 1,
-            .Format = DXGI_FORMAT_UNKNOWN,
-            .SampleDesc = DXGI_SAMPLE_DESC({ .Count = 1, .Quality = 0 }),
-            .Layout= D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-            .Flags = D3D12_RESOURCE_FLAG_NONE,
-        };
-        const D3D12_HEAP_PROPERTIES HP = {
-            .Type= D3D12_HEAP_TYPE_DEFAULT,
-            .CPUPageProperty= D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
-            .MemoryPoolPreference= D3D12_MEMORY_POOL_UNKNOWN,
-            .CreationNodeMask = 0,
-            .VisibleNodeMask = 0,
-        };
-        VERIFY_SUCCEEDED(Device->CreateCommittedResource(&HP, D3D12_HEAP_FLAG_NONE, &RD, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&BackingMemory)));
+        {
+            CComPtr<ID3D12WorkGraphProperties> WGP;
+            WGP = SO;
+            D3D12_WORK_GRAPH_MEMORY_REQUIREMENTS WGMR;
+            WGP->GetWorkGraphMemoryRequirements(WGP->GetWorkGraphIndex(WGD.ProgramName), &WGMR);
+            const D3D12_RESOURCE_DESC RD = {
+                .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+                .Alignment = 0,
+                .Width = WGMR.MaxSizeInBytes, .Height = 1, .DepthOrArraySize = 1, .MipLevels = 1,
+                .Format = DXGI_FORMAT_UNKNOWN,
+                .SampleDesc = DXGI_SAMPLE_DESC({.Count = 1, .Quality = 0 }),
+                .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+                .Flags = D3D12_RESOURCE_FLAG_NONE,
+            };
+            const D3D12_HEAP_PROPERTIES HP = {
+                .Type = D3D12_HEAP_TYPE_DEFAULT,
+                .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+                .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+                .CreationNodeMask = 0,
+                .VisibleNodeMask = 0,
+            };
+            VERIFY_SUCCEEDED(Device->CreateCommittedResource(&HP, D3D12_HEAP_FLAG_NONE, &RD, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&BackingMemory)));
+        }
+
+        //!< 結果格納用 UAV
+        CComPtr<ID3D12Resource> UAV;
+        constexpr std::array UAVData = { UINT(0),UINT(0), UINT(0), UINT(0), UINT(0), UINT(0), UINT(0), UINT(0) };
+        {
+            const D3D12_RESOURCE_DESC RD = {
+               .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+               .Alignment = 0,
+               .Width = sizeof(UAVData), .Height = 1, .DepthOrArraySize = 1, .MipLevels = 1,
+               .Format = DXGI_FORMAT_UNKNOWN,
+               .SampleDesc = DXGI_SAMPLE_DESC({.Count = 1, .Quality = 0 }),
+               .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+               .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+            };
+            const D3D12_HEAP_PROPERTIES HP = {
+                .Type = D3D12_HEAP_TYPE_DEFAULT,
+                .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+                .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+                .CreationNodeMask = 0,
+                .VisibleNodeMask = 0,
+            };
+            VERIFY_SUCCEEDED(Device->CreateCommittedResource(&HP, D3D12_HEAP_FLAG_NONE, &RD, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&UAV)));
+           
+            //!< アップロード
+            {
+                //!< ステージングリソース
+                CComPtr<ID3D12Resource> Staging;
+                const D3D12_RESOURCE_DESC RD = {
+                    .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+                    .Alignment = 0,
+                    .Width = sizeof(UAVData), .Height = 1, .DepthOrArraySize = 1, .MipLevels = 1,
+                    .Format = DXGI_FORMAT_UNKNOWN,
+                    .SampleDesc = DXGI_SAMPLE_DESC({.Count = 1, .Quality = 0 }),
+                    .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+                    .Flags = D3D12_RESOURCE_FLAG_NONE,
+                };
+                const D3D12_HEAP_PROPERTIES HP = {
+                    .Type = D3D12_HEAP_TYPE_UPLOAD,
+                    .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+                    .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+                    .CreationNodeMask = 0,
+                    .VisibleNodeMask = 0,
+                };
+                VERIFY_SUCCEEDED(Device->CreateCommittedResource(&HP, D3D12_HEAP_FLAG_NONE, &RD, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&Staging)));
+                //!< バリア COMMON -> COPY_DEST
+                {
+                    const std::array RBs = {
+                        D3D12_RESOURCE_BARRIER({
+                            .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+                            .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
+                            .Transition = D3D12_RESOURCE_TRANSITION_BARRIER({
+                                .pResource = UAV,
+                                .Subresource = 0,
+                                .StateBefore = D3D12_RESOURCE_STATE_COMMON,
+                                .StateAfter = D3D12_RESOURCE_STATE_COPY_DEST,
+                            }),
+                        }),
+                    };
+                    GCL10->ResourceBarrier(static_cast<UINT>(std::size(RBs)), std::data(RBs));
+                }
+                {
+                }
+                //!< バリア COPY_DEST -> COMMON
+                {
+                    const std::array RBs = {
+                      D3D12_RESOURCE_BARRIER({
+                          .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+                          .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
+                          .Transition = D3D12_RESOURCE_TRANSITION_BARRIER({
+                              .pResource = UAV,
+                              .Subresource = 0,
+                              .StateBefore = D3D12_RESOURCE_STATE_COPY_DEST,
+                              .StateAfter = D3D12_RESOURCE_STATE_COMMON,
+                          }),
+                      }),
+                    };
+                    GCL10->ResourceBarrier(static_cast<UINT>(std::size(RBs)), std::data(RBs));
+                }
+            }
+        }
+        //!< UAV リードバック用
+        CComPtr<ID3D12Resource> UAVReadBack;
+        {
+            const D3D12_RESOURCE_DESC RD = {
+             .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+             .Alignment = 0,
+             .Width = sizeof(UAVData), .Height = 1, .DepthOrArraySize = 1, .MipLevels = 1,
+             .Format = DXGI_FORMAT_UNKNOWN,
+             .SampleDesc = DXGI_SAMPLE_DESC({.Count = 1, .Quality = 0 }),
+             .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+             .Flags = D3D12_RESOURCE_FLAG_NONE,
+            };
+            const D3D12_HEAP_PROPERTIES HP = {
+                .Type = D3D12_HEAP_TYPE_READBACK,
+                .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+                .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+                .CreationNodeMask = 0,
+                .VisibleNodeMask = 0,
+            };
+            VERIFY_SUCCEEDED(Device->CreateCommittedResource(&HP, D3D12_HEAP_FLAG_NONE, &RD, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&UAVReadBack)));
+        }
 
         VERIFY_SUCCEEDED(GCL10->Reset(CA, nullptr));
         {
             GCL10->SetComputeRootSignature(RS);
-            //GCL10->SetComputeRootUnorderedAccessView(0, XXX->GetGPUVirtualAddress());
+            GCL10->SetComputeRootUnorderedAccessView(0, UAV->GetGPUVirtualAddress());
 
             //!< プログラムをセット
             CComPtr<ID3D12StateObjectProperties1> SOP1;
@@ -314,7 +418,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 .WorkGraph = D3D12_SET_WORK_GRAPH_DESC({
                     .ProgramIdentifier = SOP1->GetProgramIdentifier(WGD.ProgramName),
                     .Flags = D3D12_SET_WORK_GRAPH_FLAG_INITIALIZE,
-                    .BackingMemory = D3D12_GPU_VIRTUAL_ADDRESS_RANGE({.StartAddress = BackingMemory->GetGPUVirtualAddress(), .SizeInBytes = WGMR.MaxSizeInBytes}),
+                    .BackingMemory = D3D12_GPU_VIRTUAL_ADDRESS_RANGE({.StartAddress = BackingMemory->GetGPUVirtualAddress(), .SizeInBytes = BackingMemory->GetDesc().Width }),
                     .NodeLocalRootArgumentsTable = D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE({.StartAddress = 0, .SizeInBytes = 0, .StrideInBytes = 0}),
                 }),
             };
@@ -346,7 +450,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         VERIFY_SUCCEEDED(GCL10->Close());
 
         OutputDebugString(L"Execute\n");
-
+        //!< 実行
         const std::array CLs = { static_cast<ID3D12CommandList*>(GCL10)};
         CQ->ExecuteCommandLists(static_cast<UINT>(size(CLs)), std::data(CLs));
 
@@ -359,6 +463,61 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 WaitForSingleObject(hEvent, INFINITE);
                 CloseHandle(hEvent);
             }
+        }
+
+        OutputDebugString(L"Readback\n");
+        //!< リードバック
+        {
+            VERIFY_SUCCEEDED(GCL10->Reset(CA, nullptr));
+            {
+                //!< バリア UNORDERED_ACCESS -> COPY_SOURCE
+                {
+                    const std::array RBs = {
+                      D3D12_RESOURCE_BARRIER({
+                          .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+                          .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
+                          .Transition = D3D12_RESOURCE_TRANSITION_BARRIER({
+                              .pResource = UAV,
+                              .Subresource = 0,
+                              .StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                              .StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE,
+                          }),
+                      }),
+                    };
+                    GCL10->ResourceBarrier(static_cast<UINT>(std::size(RBs)), std::data(RBs));
+                }
+                //!< リードバックへコピー
+                GCL10->CopyResource(UAVReadBack, UAV);
+            }
+            VERIFY_SUCCEEDED(GCL10->Close());
+ 
+            //!< 実行
+            const std::array CLs = { static_cast<ID3D12CommandList*>(GCL10) };
+            CQ->ExecuteCommandLists(static_cast<UINT>(size(CLs)), std::data(CLs));
+
+            auto Value = Fence->GetCompletedValue();
+            VERIFY_SUCCEEDED(CQ->Signal(Fence, ++Value));
+            if (Fence->GetCompletedValue() < Value) {
+                auto hEvent = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
+                if (nullptr != hEvent) [[likely]] {
+                    VERIFY_SUCCEEDED(Fence->SetEventOnCompletion(Value, hEvent));
+                    WaitForSingleObject(hEvent, INFINITE);
+                    CloseHandle(hEvent);
+                }
+            }
+        }
+
+        //!< 結果取得
+        {
+            constexpr D3D12_RANGE Range = { .Begin = 0, .End = sizeof(UAVData) };
+            UINT* Output;
+            VERIFY_SUCCEEDED(UAVReadBack->Map(0, &Range, reinterpret_cast<void**>(&Output)));
+            {
+                for (auto i = 0; i < std::size(UAVData); ++i) {
+                    OutputDebugStringA(std::data(std::format("\tUAV[{}] = {}\n", i, Output[i])));
+                }
+            }
+            UAVReadBack->Unmap(0, nullptr);
         }
 
         OutputDebugString(L"Done\n");
