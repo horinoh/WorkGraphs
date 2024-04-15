@@ -11,9 +11,16 @@
 - シェーダモデル 6.8 以降
     - オフラインコンパイルする場合 [dxc.exe](https://github.com/microsoft/DirectXShaderCompiler/releases) をインストールしておく
     ~~~
-    $dxc.exe -E main -T lib_6_8 -Fo XXX.sco XXX.hlsl
-    $dxc.exe -E main -T lib_6_8 -Fo XXX.sco XXX.hlsl -Zi -Qembed_debug
+    $dxc.exe -E FirstNode -T lib_6_8 -Fo XXX.sco XXX.hlsl
+    $dxc.exe -E FirstNode -T lib_6_8 -Fo XXX.sco XXX.hlsl -Zi -Qembed_debug
     ~~~
     - HLSL はビルド除外設定にしておき、Build Events - Pre Build Event へ dxc コマンドを記述しておく
 
+## 参考
+- [WorkGraphs](https://devblogs.microsoft.com/directx/d3d12-work-graphs/#CoalescingLaunch)
+- [サンプル](https://github.com/microsoft/DirectX-Graphics-Samples)
+    - Samples - Desktop - D3D12HelloWorld - src - D3D12HelloWorld.sln
+        - D3D12HelloWorkGraphs
+        - D3D12WorkGraphsSandbox
+        - D3D12HelloGenericPrograms
 
