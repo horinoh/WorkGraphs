@@ -24,7 +24,7 @@ extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 613; }
 extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = reinterpret_cast<const char*>(u8".\\D3D12\\"); }
 
 #ifdef _DEBUG
-#define VERIFY_SUCCEEDED(X) { const auto _HR = (X); if(FAILED(_HR)) { MessageBoxA(nullptr, data(std::system_category().message(_HR)), "", MB_OK); __debugbreak(); } }
+#define VERIFY_SUCCEEDED(X) { const auto _HR = (X); if(FAILED(_HR)) { MessageBoxA(nullptr, std::data(std::system_category().message(_HR)), "", MB_OK); __debugbreak(); } }
 #else
 #define VERIFY_SUCCEEDED(X) (X) 
 #endif
@@ -218,7 +218,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             .DXILLibrary = D3D12_SHADER_BYTECODE({
                 .pShaderBytecode = ShaderBlob->GetBufferPointer(), .BytecodeLength = ShaderBlob->GetBufferSize() 
             }),
-            .NumExports = static_cast<UINT>(size(EDs)), .pExports = data(EDs)
+            .NumExports = static_cast<UINT>(std::size(EDs)), .pExports = std::data(EDs)
         });
 //#define USE_COLLECTION
 #ifdef USE_COLLECTION
@@ -230,14 +230,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             };
             const D3D12_STATE_OBJECT_DESC SOD = {
               .Type = D3D12_STATE_OBJECT_TYPE_COLLECTION,
-              .NumSubobjects = static_cast<UINT>(size(SSs)), .pSubobjects = data(SSs)
+              .NumSubobjects = static_cast<UINT>(std::size(SSs)), .pSubobjects = std::data(SSs)
             };
             VERIFY_SUCCEEDED(Device14->CreateStateObject(&SOD, IID_PPV_ARGS(&SO_Collection)));
         }
         //!< TYPE_EXISTING_COLLECTION のサブオブジェクトとして、メインのステートオブジェクトへ追加する
         const D3D12_EXISTING_COLLECTION_DESC ECD = {
             .pExistingCollection = SO_Collection,
-            .NumExports = static_cast<UINT>(size(EDs)), .pExports = data(EDs)
+            .NumExports = static_cast<UINT>(std::size(EDs)), .pExports = std::data(EDs)
         };
 #endif
 
@@ -259,8 +259,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         };
         constexpr std::array<D3D12_STATIC_SAMPLER_DESC, 0> SSDs = {};
         const D3D12_ROOT_SIGNATURE_DESC1 RSD = {
-            .NumParameters = static_cast<UINT>(size(RPs)), .pParameters = data(RPs),
-            .NumStaticSamplers = static_cast<UINT>(size(SSDs)), .pStaticSamplers = data(SSDs),
+            .NumParameters = static_cast<UINT>(std::size(RPs)), .pParameters = std::data(RPs),
+            .NumStaticSamplers = static_cast<UINT>(std::size(SSDs)), .pStaticSamplers = std::data(SSDs),
             .Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE
         };
         const D3D12_VERSIONED_ROOT_SIGNATURE_DESC VRSD = { .Version = D3D_ROOT_SIGNATURE_VERSION_1_1, .Desc_1_1 = RSD, };
@@ -294,7 +294,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         };
         const D3D12_STATE_OBJECT_DESC SOD = {
             .Type = D3D12_STATE_OBJECT_TYPE_EXECUTABLE,
-            .NumSubobjects = static_cast<UINT>(size(SSs)), .pSubobjects = data(SSs)
+            .NumSubobjects = static_cast<UINT>(std::size(SSs)), .pSubobjects = std::data(SSs)
         };
         VERIFY_SUCCEEDED(Device14->CreateStateObject(&SOD, IID_PPV_ARGS(&SO)));
 
@@ -477,7 +477,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         //!< コマンド発行
         OutputDebugString(L"Execute\n");
         const std::array CLs = { static_cast<ID3D12CommandList*>(GCL10)};
-        CQ->ExecuteCommandLists(static_cast<UINT>(size(CLs)), std::data(CLs));
+        CQ->ExecuteCommandLists(static_cast<UINT>(std::size(CLs)), std::data(CLs));
 
         //!< 待ち
         auto Value = Fence->GetCompletedValue();
@@ -542,7 +542,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
             //!< コマンド発行
             const std::array CLs = { static_cast<ID3D12CommandList*>(GCL10) };
-            CQ->ExecuteCommandLists(static_cast<UINT>(size(CLs)), std::data(CLs));
+            CQ->ExecuteCommandLists(static_cast<UINT>(std::size(CLs)), std::data(CLs));
 
             //!< 待ち
             auto Value = Fence->GetCompletedValue();
