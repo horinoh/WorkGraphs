@@ -112,7 +112,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PreBuildEvent>
-      <Command>c:\dxc\bin\x64\dxc.exe -E FirstNode -T lib_6_8 -Fo WorkGraphs.sco WorkGraphs.hlsl -Zi -Qembed_debug</Command>
+      <Command>c:\dxc\bin\x64\dxc.exe -T lib_6_8 -Fo WorkGraphs.sco WorkGraphs.hlsl -Zi -Qembed_debug</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -132,7 +132,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PreBuildEvent>
-      <Command>c:\dxc\bin\x64\dxc.exe -E FirstNode -T lib_6_8 -Fo WorkGraphs.sco WorkGraphs.hlsl</Command>
+      <Command>c:\dxc\bin\x64\dxc.exe  -T lib_6_8 -Fo WorkGraphs.sco WorkGraphs.hlsl</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

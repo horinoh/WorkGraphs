@@ -1,6 +1,10 @@
 GlobalRootSignature GlobalRS = { "UAV(u0)" };
 RWStructuredBuffer<uint> UAV : register(u0);
 
+LocalRootSignature LocalRS = { "RootConstants(num32BitConstants = 1, b0)" };
+struct LocalRootArgs { uint Value; };
+ConstantBuffer<LocalRootArgs> NodeConstants : register(b0);
+
 //!< ここでは CPU から以下のように 4 ディスパッチ 分コールされる
 //constexpr std::array InputData = {
 //  EntryRecord({ .GridSize = 1, .RecordIndex = 0 }),
@@ -59,18 +63,33 @@ static const uint NumEntryRecords = 4;
 // [3] = 5 * 2 + 1 + 1 = 12
 // [3] = 6 * 2 + 1 + 1 = 14
 // [3] = 7 * 2 + 1 + 1 = 16
+
+//!< セカンドノードをエントリポイント(配列の添え字)で呼び分ける
+//#define USE_ARRAY
 [Shader("node")]
 [NodeLaunch("broadcasting")]
 //!< NodeMaxDispatchGrid を使用する場合、システム変数 SV_DispatchGrid でグリッドサイズを指定する必要がある (ここで指定しているのは最大値)
 [NodeMaxDispatchGrid(16, 1, 1)]
 [NumThreads(2, 1, 1)]
+//!< ローカルルートテーブルのインデックスを明示的に指定する場合に使用 (指定しない場合は自動的に割り振られる)
+//[NodeLocalRootArgumentsTableIndex(1)]
 void FirstNode(
     DispatchNodeInputRecord<EntryRecord> InputData,
+#ifdef USE_ARRAY
+    //!< 配列として宣言 (NodeArraySize(), NodeOutputArray)
+    [MaxRecords(2)][NodeArraySize(2)] NodeOutputArray<SecondNodeInput> SecondNode,
+#else
     [MaxRecords(2)] NodeOutput<SecondNodeInput> SecondNode,
+#endif
     uint ThreadIndex : SV_GroupIndex,
     uint DispatchThreadID : SV_DispatchThreadID)
 {
+#ifdef USE_ARRAY
+    //!< セカンドノード[1] を選択
+    GroupNodeOutputRecords<SecondNodeInput> Out = SecondNode[1].GetGroupNodeOutputRecords(2);
+#else
     GroupNodeOutputRecords<SecondNodeInput> Out = SecondNode.GetGroupNodeOutputRecords(2);
+#endif
 
     Out[ThreadIndex].RecordIndex = InputData.Get().RecordIndex;
     Out[ThreadIndex].IncrementValue = DispatchThreadID * 2 + ThreadIndex + 1;
@@ -82,8 +101,7 @@ void FirstNode(
 //!< NodeDispatchGrid を使用する場合、ここで指定したグリッドサイズで起動される
 [NodeDispatchGrid(2, 1, 1)]
 [NumThreads(2, 1, 1)]
-//!< 指定が無い場合は関数名になるので大抵は不要、エントリポイントインデックスを指定する場合は明示的に使用する必要がある
-//!< DispatchGraph() 時に EntrypointIndex = 1 を指定するとこちらが使用される
+//!< NodeID 指定が無い場合は関数名が使われるので大抵は不要、エントリポイントを指定時は明示的に使用 (DispatchGraph() 時に EntrypointIndex = 1 指定すると使用される)
 [NodeID("FirstNode", 1)]
 void FirstNode1(
     DispatchNodeInputRecord<EntryRecord> InputData,
@@ -115,6 +133,25 @@ void SecondNode(
     Out.OutputComplete();
 }
 
+// UAV[0] = (1 + 4) * 2 = 10
+// UAV[1] = (1 + 3 + 6 + 8) * 2 = 36 
+// UAV[2] = (1 + 3 + 5 + 8 + 10 + 12) * 2 = 78
+// UAV[3] = (1 + 3 + 5 + 7 + 10 + 12 + 14 + 16) * 2 = 136
+//!< セカンドノード[1]
+[NodeID("SecondNode", 1)]
+[Shader("node")]
+[NodeLaunch("thread")]
+void SecondNode1(
+    ThreadNodeInputRecord<SecondNodeInput> InputData,
+    [MaxRecords(1)] NodeOutput<ThirdNodeInput> ThirdNode)
+{
+    InterlockedAdd(UAV[InputData.Get().RecordIndex], InputData.Get().IncrementValue * 2);
+
+    ThreadNodeOutputRecords<ThirdNodeInput> Out = ThirdNode.GetThreadNodeOutputRecords(1);
+    Out.Get().RecordIndex = InputData.Get().RecordIndex;
+    Out.OutputComplete();
+}
+
 groupshared uint Sum[NumEntryRecords];
 
 // 起動されたスレッド数になる
@@ -125,6 +162,7 @@ groupshared uint Sum[NumEntryRecords];
 [Shader("node")]
 [NodeLaunch("coalescing")]
 [NumThreads(32, 1, 1)]
+//[NodeMaxRecursionDepth(3)]
 void ThirdNode(
     [MaxRecords(32)] GroupNodeInputRecords<ThirdNodeInput> InputData,
     uint ThreadIndex : SV_GroupIndex)
@@ -142,6 +180,8 @@ void ThirdNode(
         InterlockedAdd(Sum[InputData[ThreadIndex].RecordIndex], 1);
     }
     Barrier(GROUP_SHARED_MEMORY, GROUP_SCOPE | GROUP_SYNC);
+
+    //if (GetRemainingRecursionLevels()) {}
 
     //!< 0 番のスレッドが集計するので、他のスレッドはここまで
     if (ThreadIndex > 0) {
