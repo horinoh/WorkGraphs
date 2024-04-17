@@ -252,7 +252,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                   .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
                   .Transition = D3D12_RESOURCE_TRANSITION_BARRIER({
                       .pResource = Resource,
-                      .Subresource = 0,
+                      .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
                       .StateBefore = Before,
                       .StateAfter = After,
                   }),
@@ -374,7 +374,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                     if (-1 != NLRATI) {
                         //!< (ここでは) 単にインデックスを取得する
                         LocalRootArgsData.emplace_back(LOCAL_ROOT_ARGS({ .Value = NLRATI }));
-                        OutputDebugStringA(std::data(std::format("\tLocalRootArgs, {}\n", NLRATI)));
+                        OutputDebugStringA(std::data(std::format("\t\tLocalRootArgs, {}\n", NLRATI)));
                     }
                 }
 
@@ -394,19 +394,29 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             //!< ローカルルート
             if (!std::empty(LocalRootArgsData)) {
                 CreateDefaultBuffer(TotalSizeOf(LocalRootArgsData), &LocalRootArgs);
-
+                
+                //!< アップロード
                 CComPtr<ID3D12Resource> Upload;
-                CreateUploadBuffer(TotalSizeOf(LocalRootArgsData), &Upload);
+                const auto Size = TotalSizeOf(LocalRootArgsData);
+                CreateUploadBuffer(Size, &Upload);
+                std::byte* Data;
+                VERIFY_SUCCEEDED(Upload->Map(0, nullptr, reinterpret_cast<void**>(&Data))); {
+                    memcpy(Data, std::data(LocalRootArgsData), Size);
+                } Upload->Unmap(0, nullptr);
 
-                //VERIFY_SUCCEEDED(GCL10->Reset(CA, nullptr)); {
-                //    //!< バリア COMMON -> COPY_DEST
-                //    Barrier(UAV, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
-                //    {
-                //    }
-                //    //!< バリア COPY_DEST -> COMMON
-                //    Barrier(UAV, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON);
-                //}
-                //VERIFY_SUCCEEDED(GCL10->Close());
+                VERIFY_SUCCEEDED(GCL10->Reset(CA, nullptr)); {
+                    Barrier(LocalRootArgs, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+                    {
+                        GCL10->CopyBufferRegion(LocalRootArgs, 0, Upload, 0, Size);
+                    }
+                    Barrier(LocalRootArgs, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON);
+                }
+                VERIFY_SUCCEEDED(GCL10->Close());
+
+                const std::array CLs = { static_cast<ID3D12CommandList*>(GCL10) };
+                CQ->ExecuteCommandLists(static_cast<UINT>(std::size(CLs)), std::data(CLs));
+
+                WaitForFence();
             }
         }
 
@@ -415,22 +425,29 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         constexpr std::array UAVData = { UINT(0),UINT(0), UINT(0), UINT(0), UINT(0), UINT(0), UINT(0), UINT(0) };
         {
             CreateUABuffer(TotalSizeOf(UAVData), &UAV);
-#if false
+#if 0
             //!< アップロード
-            {
-                //!< ステージングリソース
-                CComPtr<ID3D12Resource> Upload;
-                CreateUploadBuffer(TotalSizeOf(UAVData), &Upload);
-                VERIFY_SUCCEEDED(GCL10->Reset(CA, nullptr)); {
-                    //!< バリア COMMON -> COPY_DEST
-                    Barrier(UAV, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
-                    {
-                    }
-                    //!< バリア COPY_DEST -> COMMON
-                    Barrier(UAV, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON);
+            CComPtr<ID3D12Resource> Upload;
+            const auto Size = TotalSizeOf(UAVData);
+            CreateUploadBuffer(Size, &Upload);
+            std::byte* Data;
+            VERIFY_SUCCEEDED(Upload->Map(0, nullptr, reinterpret_cast<void**>(&Data))); {
+                memcpy(Data, std::data(UAVData), Size);
+            } Upload->Unmap(0, nullptr);
+
+            VERIFY_SUCCEEDED(GCL10->Reset(CA, nullptr)); {
+                Barrier(UAV, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+                {
+                    GCL10->CopyBufferRegion(UAV, 0, Upload, 0, Size);
                 }
-                VERIFY_SUCCEEDED(GCL10->Close());
+                Barrier(UAV, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON);
             }
+            VERIFY_SUCCEEDED(GCL10->Close());
+
+            const std::array CLs = { static_cast<ID3D12CommandList*>(GCL10) };
+            CQ->ExecuteCommandLists(static_cast<UINT>(std::size(CLs)), std::data(CLs));
+
+            WaitForFence();
 #endif
         }
     

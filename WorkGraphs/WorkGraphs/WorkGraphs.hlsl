@@ -71,8 +71,6 @@ static const uint NumEntryRecords = 4;
 //!< NodeMaxDispatchGrid を使用する場合、システム変数 SV_DispatchGrid でグリッドサイズを指定する必要がある (ここで指定しているのは最大値)
 [NodeMaxDispatchGrid(16, 1, 1)]
 [NumThreads(2, 1, 1)]
-//!< ローカルルートテーブルのインデックスを明示的に指定する場合に使用 (指定しない場合は自動的に割り振られる)
-//[NodeLocalRootArgumentsTableIndex(1)]
 void FirstNode(
     DispatchNodeInputRecord<EntryRecord> InputData,
 #ifdef USE_ARRAY
@@ -154,15 +152,15 @@ void SecondNode1(
 
 groupshared uint Sum[NumEntryRecords];
 
-// 起動されたスレッド数になる
-// UAV[4] = 2
-// UAV[5] = 4
-// UAV[6] = 6
-// UAV[7] = 8
+//#define USE_LOCAL_ROOT
 [Shader("node")]
 [NodeLaunch("coalescing")]
 [NumThreads(32, 1, 1)]
 //[NodeMaxRecursionDepth(3)]
+#ifdef USE_LOCAL_ROOT
+//!< ローカルルートテーブルのインデックスを明示的に指定する場合に使用 (指定しない場合は自動的に割り振られる)
+//[NodeLocalRootArgumentsTableIndex(2)]
+#endif
 void ThirdNode(
     [MaxRecords(32)] GroupNodeInputRecords<ThirdNodeInput> InputData,
     uint ThreadIndex : SV_GroupIndex)
@@ -177,7 +175,20 @@ void ThirdNode(
 
     Barrier(GROUP_SHARED_MEMORY, GROUP_SCOPE | GROUP_SYNC);
     {
+#ifdef USE_LOCAL_ROOT
+        //!< NodeConstants.Value == 2 の為
+        // UAV[4] = 4
+        // UAV[5] = 8
+        // UAV[6] = 12
+        // UAV[7] = 16
+        InterlockedAdd(Sum[InputData[ThreadIndex].RecordIndex], NodeConstants.Value);
+#else
+        // UAV[4] = 2
+        // UAV[5] = 4
+        // UAV[6] = 6
+        // UAV[7] = 8
         InterlockedAdd(Sum[InputData[ThreadIndex].RecordIndex], 1);
+#endif
     }
     Barrier(GROUP_SHARED_MEMORY, GROUP_SCOPE | GROUP_SYNC);
 
