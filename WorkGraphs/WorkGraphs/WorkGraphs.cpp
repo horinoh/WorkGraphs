@@ -545,6 +545,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             UAReadback->Unmap(0, nullptr);
         }
         OutputDebugString(L"Done\n");
+
+        SendMessage(hWnd, WM_DESTROY, 0, 0);
     }
         break;
     case WM_KEYDOWN:
