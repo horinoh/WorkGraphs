@@ -1,8 +1,8 @@
-//!< セカンドノードをエントリポイント(配列の添え字)で呼び分ける (FirstNode1 が使用される)
+//!< セカンドノードをエントリポイント(配列の添え字)で呼び分ける (FirstNode から SecondNode1 をコール)
 //#define USE_ARRAY
-//!< ローカルルートシグネチャ (NodeConstants.Value) を使用
+//!< ローカルルートシグネチャ (NodeConstants.Value) を使用 (ThirdNode)
 //#define USE_LOCAL_ROOT
-//!< 再帰呼び出し 
+//!< 再帰呼び出しを使用 (ThirdNode)
 //#define USE_RECURSION
 
 //!< グローバルルートシグネチャ
