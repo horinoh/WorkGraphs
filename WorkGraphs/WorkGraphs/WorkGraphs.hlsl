@@ -3,7 +3,7 @@
 //!< ローカルルートシグネチャ (NodeConstants.Value) を使用
 //#define USE_LOCAL_ROOT
 //!< 再帰呼び出し 
-#define USE_RECURSION
+//#define USE_RECURSION
 
 //!< グローバルルートシグネチャ
 GlobalRootSignature GlobalRS = { "UAV(u0)" };
@@ -229,6 +229,13 @@ void ThirdNode(
     Barrier(GROUP_SHARED_MEMORY, GROUP_SCOPE | GROUP_SYNC);
 
 #ifdef USE_RECURSION
+    //!< ローカルルートシグネチャ使用時
+    // UAV[4] = 4 * (1 + 3) = 16
+    // UAV[5] = 8 * (1 + 3) = 32
+    // UAV[6] = 12 * (1 + 3) = 48
+    // UAV[7] = 16 * (1 + 3) = 64
+    //
+    //!< 不使用時
     // UAV[4] = 2 * (1 + 3) = 8
     // UAV[5] = 4 * (1 + 3) = 16
     // UAV[6] = 6 * (1 + 3) = 24
