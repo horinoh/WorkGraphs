@@ -24,7 +24,7 @@ extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 613; }
 extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = reinterpret_cast<const char*>(u8".\\D3D12\\"); }
 
 #ifdef _DEBUG
-#define VERIFY_SUCCEEDED(X) { const auto _HR = (X); if(FAILED(_HR)) { MessageBoxA(nullptr, std::data(std::system_category().message(_HR)), "", MB_OK); __debugbreak(); } }
+#define VERIFY_SUCCEEDED(X) { const auto _HR = (X); if(FAILED(_HR)) { OutputDebugStringA(std::data(std::format("HRESULT = {:#x}\n", _HR))); __debugbreak(); } }
 #else
 #define VERIFY_SUCCEEDED(X) (X) 
 #endif
@@ -180,6 +180,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         VERIFY_SUCCEEDED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_2, IID_PPV_ARGS(&Device)));
         CComPtr<ID3D12Device14> Device14;
         Device14 = Device;
+
+        //!< WorkGraphs のサポートをチェック
+        D3D12_FEATURE_DATA_D3D12_OPTIONS21 Options = {};
+        VERIFY_SUCCEEDED(Device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS21, &Options, sizeof(Options)));
+        if (D3D12_WORK_GRAPHS_TIER_NOT_SUPPORTED == Options.WorkGraphsTier) {
+            __debugbreak();
+        }
+
         auto CreateBuffer = [&](const UINT64 Size, const D3D12_RESOURCE_FLAGS Flags, const D3D12_HEAP_TYPE Type, const D3D12_RESOURCE_STATES State, ID3D12Resource** Resource) {
             const D3D12_RESOURCE_DESC RD = {
                 .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
@@ -200,16 +208,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             VERIFY_SUCCEEDED(Device->CreateCommittedResource(&HP, D3D12_HEAP_FLAG_NONE, &RD, State, nullptr, IID_PPV_ARGS(Resource)));
         };
         auto CreateDefaultBuffer = [&](const UINT64 Size, ID3D12Resource** Resource) { CreateBuffer(Size, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON, Resource); };
-        auto CreateUABuffer = [&](const UINT64 Size, ID3D12Resource** Resource) { CreateBuffer(Size, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON, Resource); };
+        auto CreateUAVBuffer = [&](const UINT64 Size, ID3D12Resource** Resource) { CreateBuffer(Size, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON, Resource); };
         auto CreateUploadBuffer = [&](const UINT64 Size, ID3D12Resource** Resource) { CreateBuffer(Size, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_COMMON, Resource); };
         auto CreateReadbackBuffer = [&](const UINT64 Size, ID3D12Resource** Resource) { CreateBuffer(Size, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_STATE_COMMON, Resource); };
-
-        //!< WorkGraphs のサポートをチェック
-        D3D12_FEATURE_DATA_D3D12_OPTIONS21 Options = {};
-        VERIFY_SUCCEEDED(Device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS21, &Options, sizeof(Options)));
-        if (D3D12_WORK_GRAPHS_TIER_NOT_SUPPORTED == Options.WorkGraphsTier) {
-            __debugbreak();
-        }
 
         //!< コマンドキュー
         CComPtr<ID3D12CommandQueue> CQ;
@@ -245,6 +246,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         CComPtr<ID3D12GraphicsCommandList10> GCL10;
         GCL10 = CL;
         VERIFY_SUCCEEDED(GCL10->Close()); //!< クローズしておく
+
         auto Barrier = [&](ID3D12Resource* Resource, const D3D12_RESOURCE_STATES Before, const D3D12_RESOURCE_STATES After) {
             const std::array RBs = {
               D3D12_RESOURCE_BARRIER({
@@ -424,7 +426,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         CComPtr<ID3D12Resource> UAV;
         constexpr std::array UAVData = { UINT(0),UINT(0), UINT(0), UINT(0), UINT(0), UINT(0), UINT(0), UINT(0) };
         {
-            CreateUABuffer(TotalSizeOf(UAVData), &UAV);
+            CreateUAVBuffer(TotalSizeOf(UAVData), &UAV);
 #if 0
             //!< アップロード
             CComPtr<ID3D12Resource> Upload;
@@ -512,8 +514,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         //!< リードバック
         {
             //!< UAV リードバック用
-            CComPtr<ID3D12Resource> UAReadback;
-            CreateReadbackBuffer(TotalSizeOf(UAVData), &UAReadback);
+            CComPtr<ID3D12Resource> UAVReadback;
+            CreateReadbackBuffer(TotalSizeOf(UAVData), &UAVReadback);
 
             //!< コマンド作成
             VERIFY_SUCCEEDED(GCL10->Reset(CA, nullptr));
@@ -522,7 +524,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 Barrier(UAV, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
                 //!< リードバックへコピー
-                GCL10->CopyResource(UAReadback, UAV);
+                GCL10->CopyResource(UAVReadback, UAV);
             }
             VERIFY_SUCCEEDED(GCL10->Close());
 
@@ -536,13 +538,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             //!< 結果取得
             constexpr D3D12_RANGE Range = { .Begin = 0, .End = TotalSizeOf(UAVData) };
             UINT* Output;
-            VERIFY_SUCCEEDED(UAReadback->Map(0, &Range, reinterpret_cast<void**>(&Output)));
+            VERIFY_SUCCEEDED(UAVReadback->Map(0, &Range, reinterpret_cast<void**>(&Output)));
             {
                 for (auto i = 0; i < std::size(UAVData); ++i) {
                     OutputDebugStringA(std::data(std::format("\tUAV[{}] = {}\n", i, Output[i])));
                 }
             }
-            UAReadback->Unmap(0, nullptr);
+            UAVReadback->Unmap(0, nullptr);
         }
         OutputDebugString(L"Done\n");
 

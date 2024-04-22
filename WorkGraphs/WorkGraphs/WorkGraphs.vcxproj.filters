@@ -50,11 +50,11 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="WorkGraphs.hlsl">
-      <Filter>Shader Files</Filter>
-    </FxCompile>
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="packages.config" />
+    <CustomBuild Include="WorkGraphs.hlsl">
+      <Filter>Shader Files</Filter>
+    </CustomBuild>
   </ItemGroup>
 </Project>

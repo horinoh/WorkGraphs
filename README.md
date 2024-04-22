@@ -10,13 +10,16 @@
 - GPU RTX30 シリーズ以降、NVIDIA ドライバ 551.76 以降 
 - シェーダモデル 6.8 以降
     - オフラインコンパイルする場合 [dxc.exe](https://github.com/microsoft/DirectXShaderCompiler/releases) をインストールしておく
-    ~~~
-    $dxc.exe -E FirstNode -T lib_6_8 -Fo XXX.sco XXX.hlsl
-    $dxc.exe -E FirstNode -T lib_6_8 -Fo XXX.sco XXX.hlsl -Zi -Qembed_debug
-    ~~~
-    - HLSL はビルド除外設定にしておき、Build Events - Pre Build Event へ dxc コマンドを記述しておく
+        - コンパイル例
+        ~~~
+        $dxc.exe -E FirstNode -T lib_6_8 -Fo XXX.sco XXX.hlsl
+        $dxc.exe -E FirstNode -T lib_6_8 -Fo XXX.sco XXX.hlsl -Zi -Qembed_debug
+        ~~~
+    - HLSL は Item Type を Custom Build Tool にして、ビルド用のコマンドラインを記述した
+    - dxc.exe のインストール先は、環境変数 DXC_PATH を作成してコマンドライン中で使用している
 
 ## 参考
+- [DirectX-Specs](https://microsoft.github.io/DirectX-Specs/d3d/WorkGraphs.html)
 - [WorkGraphs](https://devblogs.microsoft.com/directx/d3d12-work-graphs/#CoalescingLaunch)
 - [サンプル](https://github.com/microsoft/DirectX-Graphics-Samples)
     - Samples - Desktop - D3D12HelloWorld - src - D3D12HelloWorld.sln
