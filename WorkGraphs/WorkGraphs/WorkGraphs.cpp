@@ -329,7 +329,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         constexpr std::array<D3D12_NODE_ID, 0> NodeIDs = {};
         constexpr std::array<D3D12_NODE, 0> Nodes = {};
         const D3D12_WORK_GRAPH_DESC WGD = {
-            .ProgramName = L"WorkGraphsName",
+            .ProgramName = L"WorkGraphsName", //!< 任意の名前をつける、「バッキングメモリ」「ディスパッチ」時に使用
             .Flags = D3D12_WORK_GRAPH_FLAG_INCLUDE_ALL_AVAILABLE_NODES,
             .NumEntrypoints = static_cast<UINT>(std::size(NodeIDs)), .pEntrypoints = std::data(NodeIDs),
             .NumExplicitlyDefinedNodes = static_cast<UINT>(std::size(Nodes)), .pExplicitlyDefinedNodes = std::data(Nodes),
@@ -361,7 +361,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         {
             CComPtr<ID3D12WorkGraphProperties> WGP;
             WGP = SO;
-            const auto WGIndex = WGP->GetWorkGraphIndex(WGD.ProgramName);
+            const auto WGIndex = WGP->GetWorkGraphIndex(WGD.ProgramName); //!< 任意につけた名前
 
             //!< プロパティの列挙
             {
@@ -466,7 +466,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             const D3D12_SET_PROGRAM_DESC SPD = {
                 .Type = D3D12_PROGRAM_TYPE_WORK_GRAPH,
                 .WorkGraph = D3D12_SET_WORK_GRAPH_DESC({
-                    .ProgramIdentifier = SOP1->GetProgramIdentifier(WGD.ProgramName),
+                    .ProgramIdentifier = SOP1->GetProgramIdentifier(WGD.ProgramName), //!< 任意につけた名前
                     .Flags = D3D12_SET_WORK_GRAPH_FLAG_INITIALIZE,
                     .BackingMemory = D3D12_GPU_VIRTUAL_ADDRESS_RANGE({.StartAddress = BackingMemory->GetGPUVirtualAddress(), .SizeInBytes = BackingMemory->GetDesc().Width }),
                     .NodeLocalRootArgumentsTable = 
