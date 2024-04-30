@@ -17,6 +17,8 @@
         ~~~
     - HLSL は Item Type を Custom Build Tool にして、ビルド用のコマンドラインを記述した
     - dxc.exe のインストール先は、環境変数 DXC_PATH を作成してコマンドライン中で使用している
+- atlbase.h が無いと怒られる場合
+    - Visual Studio インストーラから「最新の vXXX ビルドツール用 C++ ATL (x86 および x64)」をインストールしておく
 
 ## 参考
 - [DirectX-Specs](https://microsoft.github.io/DirectX-Specs/d3d/WorkGraphs.html)

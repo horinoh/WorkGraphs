@@ -336,7 +336,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         };
 
         //!< ステートオブジェクト
-        CComPtr<ID3D12StateObject> SO;
         const std::array SSs = {
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE, .pDesc = &GRS }),
 #ifdef USE_COLLECTION
@@ -350,6 +349,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             .Type = D3D12_STATE_OBJECT_TYPE_EXECUTABLE,
             .NumSubobjects = static_cast<UINT>(std::size(SSs)), .pSubobjects = std::data(SSs)
         };
+        CComPtr<ID3D12StateObject> SO;
         VERIFY_SUCCEEDED(Device14->CreateStateObject(&SOD, IID_PPV_ARGS(&SO)));
 
         //!< バッキングメモリ
