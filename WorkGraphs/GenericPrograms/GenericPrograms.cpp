@@ -37,6 +37,9 @@ std::vector<CComPtr<ID3D12GraphicsCommandList10>> GraphicsCommandList10s;
 CComPtr<ID3D12CommandQueue> CommandQueue;
 CComPtr<ID3D12Fence> Fence;
 CComPtr<IDXGISwapChain4> SwapChain4;
+std::vector<CComPtr<ID3D12Resource>> SwapChainResources;
+CComPtr<ID3D12RootSignature> RootSignature;
+CComPtr<ID3D12Resource> VertexBuffer;
 
 void CreateBuffer(ID3D12Device* Device, const UINT64 Size, const D3D12_RESOURCE_FLAGS Flags, const D3D12_HEAP_TYPE Type, const D3D12_RESOURCE_STATES State, ID3D12Resource** Resource)
 {
@@ -236,9 +239,37 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         VERIFY_SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&Debug)));
         Debug->EnableDebugLayer();
 #endif
+
+        //!< ファクトリー
+        CComPtr<IDXGIFactory4> Factory;
+#ifdef _DEBUG
+        VERIFY_SUCCEEDED(CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(&Factory)));
+#else
+        VERIFY_SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&Factory)));
+#endif
+
+        //!< アダプター (GPU)
+        std::vector<DXGI_ADAPTER_DESC> ADs;
+        CComPtr<IDXGIAdapter> Adapter;
+        for (UINT i = 0; DXGI_ERROR_NOT_FOUND != Factory->EnumAdapters(i, &Adapter);++i) {
+            VERIFY_SUCCEEDED(Adapter->GetDesc(&ADs.emplace_back()));
+            Adapter.Release();
+        }
+        VERIFY_SUCCEEDED(Factory->EnumAdapters(static_cast<UINT>(std::distance(std::begin(ADs), std::ranges::max_element(ADs, [](const DXGI_ADAPTER_DESC& lhs, const DXGI_ADAPTER_DESC& rhs) {
+                return lhs.DedicatedSystemMemory > rhs.DedicatedSystemMemory;
+            }))), 
+            &Adapter));
+
+        //!< アウトプット (モニター)
+        //CComPtr<IDXGIOutput> Output;
+        //for (UINT i = 0; DXGI_ERROR_NOT_FOUND != Adapter->EnumOutputs(i, &Output); ++i) {
+        //    if (nullptr != Output) { break; }
+        //    Output.Release();
+        //}
+
         //!< デバイス
         CComPtr<ID3D12Device> Device;
-        VERIFY_SUCCEEDED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_2, IID_PPV_ARGS(&Device)));
+        VERIFY_SUCCEEDED(D3D12CreateDevice(Adapter, D3D_FEATURE_LEVEL_12_2, IID_PPV_ARGS(&Device)));
         CComPtr<ID3D12Device14> Device14;
         Device14 = Device;
 
@@ -259,12 +290,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         const auto W = Rect.right - Rect.left, H = Rect.bottom - Rect.top;
 
         //!< スワップチェイン
-        CComPtr<IDXGIFactory4> Factory;
-#ifdef _DEBUG
-        VERIFY_SUCCEEDED(CreateDXGIFactory2(DXGI_CREATE_FACTORY_DEBUG, IID_PPV_ARGS(&Factory)));
-#else
-        VERIFY_SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&Factory)));
-#endif
         DXGI_SWAP_CHAIN_DESC SCD = {
             .BufferDesc = DXGI_MODE_DESC({
                 .Width = static_cast<UINT>(W), .Height = static_cast<UINT>(H),
@@ -294,7 +319,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         CComPtr<ID3D12DescriptorHeap> SwapChainDH;
         VERIFY_SUCCEEDED(Device->CreateDescriptorHeap(&DHD, IID_PPV_ARGS(&SwapChainDH)));
 
-        std::vector<CComPtr<ID3D12Resource>> SwapChainResources;
         std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> SwapChainHandles;
 
         auto CDH = SwapChainDH->GetCPUDescriptorHandleForHeapStart();
@@ -337,7 +361,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         const D3D12_VERSIONED_ROOT_SIGNATURE_DESC VRSD = { .Version = D3D_ROOT_SIGNATURE_VERSION_1_1, .Desc_1_1 = RSD, };
         CComPtr<ID3DBlob> RSBlob, ErrorBlob;
         VERIFY_SUCCEEDED(D3D12SerializeVersionedRootSignature(&VRSD, &RSBlob, &ErrorBlob));
-        CComPtr<ID3D12RootSignature> RootSignature;
         VERIFY_SUCCEEDED(Device->CreateRootSignature(0, RSBlob->GetBufferPointer(), RSBlob->GetBufferSize(), IID_PPV_ARGS(&RootSignature)));
 
         //!< シェーダ
@@ -350,12 +373,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
        
         //!< バーテックスバッファ
         using PosCol = std::pair<DirectX::XMFLOAT3, DirectX::XMFLOAT3>;
+#if 0
         constexpr std::array Vertices = {
             PosCol({{ 0.0f, 0.5f, 0.0f },{ 1.0f, 0.0f, 0.0f } }),
             PosCol({{ -0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f } }),
             PosCol({{ 0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } }),
         };
-        CComPtr<ID3D12Resource> VertexBuffer;
+#else
+        constexpr std::array Vertices = {
+           PosCol({{ 0.0f, 0.5f, 0.0f },{ 1.0f, 0.0f, 0.0f } }),
+           PosCol({{ 0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } }),
+           PosCol({{ -0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f } }),
+        };
+#endif
         CreateDefaultBuffer(Device, sizeof(Vertices), &VertexBuffer);
         const D3D12_VERTEX_BUFFER_VIEW VertexBufferView = {
            .BufferLocation = VertexBuffer->GetGPUVirtualAddress(),
@@ -414,7 +444,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         D3D12_GENERIC_PROGRAM_DESC GPD = {
            .ProgramName = L"GenericPrograms",
            .NumExports = static_cast<UINT>(std::size(Exports)), .pExports = std::data(Exports),
-           //.NumSubobjects = , .ppSubobjects = //!< 今はセットしない
+           //.NumSubobjects = , .ppSubobjects = //!< ここではセットしない
         };
 
         const std::array SSs = {
@@ -430,8 +460,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_GENERIC_PROGRAM, .pDesc = &GPD }),
         };
         
-        //!< .NumSubobjects, .ppSubobjects はここでセットする
         const std::array SSs_GP = { &SSs[4], &SSs[5], &SSs[6] };
+        //!< .NumSubobjects, .ppSubobjects はここでセットする
         GPD.NumSubobjects = static_cast<UINT>(std::size(SSs_GP)); GPD.ppSubobjects = std::data(SSs_GP);
 
         const D3D12_STATE_OBJECT_DESC SOD = {
@@ -447,7 +477,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             const auto GCL10 = GraphicsCommandList10s[Index];
             VERIFY_SUCCEEDED(GCL10->Reset(CommandAllocator, nullptr));
             {
-                GCL10->SetComputeRootSignature(RootSignature);
+                GCL10->SetGraphicsRootSignature(RootSignature);
 
                 //!< プログラムをセット
                 CComPtr<ID3D12StateObjectProperties1> SOP1;
@@ -480,8 +510,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             }
             VERIFY_SUCCEEDED(GCL10->Close());
         }
-
-        SendMessage(hWnd, WM_PAINT, 0, 0);
+        //SendMessage(hWnd, WM_PAINT, 0, 0);
     }
         break;
     case WM_KEYDOWN:
