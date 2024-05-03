@@ -248,28 +248,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         VERIFY_SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&Factory)));
 #endif
 
-        //!< アダプター (GPU)
-        std::vector<DXGI_ADAPTER_DESC> ADs;
-        CComPtr<IDXGIAdapter> Adapter;
-        for (UINT i = 0; DXGI_ERROR_NOT_FOUND != Factory->EnumAdapters(i, &Adapter);++i) {
-            VERIFY_SUCCEEDED(Adapter->GetDesc(&ADs.emplace_back()));
-            Adapter.Release();
-        }
-        VERIFY_SUCCEEDED(Factory->EnumAdapters(static_cast<UINT>(std::distance(std::begin(ADs), std::ranges::max_element(ADs, [](const DXGI_ADAPTER_DESC& lhs, const DXGI_ADAPTER_DESC& rhs) {
-                return lhs.DedicatedSystemMemory > rhs.DedicatedSystemMemory;
-            }))), 
-            &Adapter));
-
-        //!< アウトプット (モニター)
-        //CComPtr<IDXGIOutput> Output;
-        //for (UINT i = 0; DXGI_ERROR_NOT_FOUND != Adapter->EnumOutputs(i, &Output); ++i) {
-        //    if (nullptr != Output) { break; }
-        //    Output.Release();
-        //}
-
         //!< デバイス
         CComPtr<ID3D12Device> Device;
-        VERIFY_SUCCEEDED(D3D12CreateDevice(Adapter, D3D_FEATURE_LEVEL_12_2, IID_PPV_ARGS(&Device)));
+        VERIFY_SUCCEEDED(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_2, IID_PPV_ARGS(&Device)));
         CComPtr<ID3D12Device14> Device14;
         Device14 = Device;
 
@@ -318,9 +299,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         });
         CComPtr<ID3D12DescriptorHeap> SwapChainDH;
         VERIFY_SUCCEEDED(Device->CreateDescriptorHeap(&DHD, IID_PPV_ARGS(&SwapChainDH)));
-
         std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> SwapChainHandles;
-
         auto CDH = SwapChainDH->GetCPUDescriptorHandleForHeapStart();
         const auto IncSize = Device->GetDescriptorHandleIncrementSize(SwapChainDH->GetDesc().Type);
         for (UINT i = 0; i < SCD.BufferCount; ++i) {
@@ -374,14 +353,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         //!< バーテックスバッファ
         using PosCol = std::pair<DirectX::XMFLOAT3, DirectX::XMFLOAT3>;
 #if 0
+        //!< CCW
         constexpr std::array Vertices = {
-            PosCol({{ 0.0f, 0.5f, 0.0f },{ 1.0f, 0.0f, 0.0f } }),
+            PosCol({{ 0.0f, 0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f } }),
             PosCol({{ -0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f } }),
             PosCol({{ 0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } }),
         };
 #else
+        //!< CW
         constexpr std::array Vertices = {
-           PosCol({{ 0.0f, 0.5f, 0.0f },{ 1.0f, 0.0f, 0.0f } }),
+           PosCol({{ 0.0f, 0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f } }),
            PosCol({{ 0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } }),
            PosCol({{ -0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f } }),
         };
@@ -431,6 +412,41 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
           .NumExports = static_cast<UINT>(std::size(EDs_PS)), .pExports = std::data(EDs_PS)
         };
 
+#if 0
+        constexpr D3D12_RASTERIZER_DESC2 RD2 = {
+            .FillMode = D3D12_FILL_MODE_SOLID,
+            .CullMode = D3D12_CULL_MODE_BACK, .FrontCounterClockwise = TRUE,
+            .DepthBias = D3D12_DEFAULT_DEPTH_BIAS, .DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP, .SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS, .DepthClipEnable = TRUE,
+            .LineRasterizationMode = D3D12_LINE_RASTERIZATION_MODE_ALIASED,
+            .ForcedSampleCount = 0,
+            .ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF 
+        };
+        constexpr D3D12_BLEND_DESC BD = {
+            .AlphaToCoverageEnable = TRUE,
+            .IndependentBlendEnable = FALSE,
+            .RenderTarget = {},
+        };
+        constexpr D3D12_DEPTH_STENCILOP_DESC1 DSOD = {
+            .StencilFailOp = D3D12_STENCIL_OP_KEEP,
+            .StencilDepthFailOp = D3D12_STENCIL_OP_KEEP,
+            .StencilPassOp = D3D12_STENCIL_OP_KEEP,
+            .StencilFunc = D3D12_COMPARISON_FUNC_NONE,
+            .StencilReadMask = D3D12_DEFAULT_STENCIL_READ_MASK,
+            .StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK,
+        };
+        constexpr D3D12_DEPTH_STENCIL_DESC2 DSD = {
+            .DepthEnable = FALSE,
+            .DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO,
+            .DepthFunc = D3D12_COMPARISON_FUNC_NONE,
+            .StencilEnable = FALSE,
+            .FrontFace = DSOD,
+            .BackFace = DSOD,
+            .DepthBoundsTestEnable = FALSE 
+        };
+        constexpr UINT SM = D3D12_DEFAULT_SAMPLE_MASK;
+        constexpr DXGI_SAMPLE_DESC SD = { .Count = 1, .Quality = 0 };
+#endif
+
         //!< ジェネリックプログラム
         const std::array IEDs = {
             D3D12_INPUT_ELEMENT_DESC({.SemanticName = "POSITION", .SemanticIndex = 0, .Format = DXGI_FORMAT_R32G32B32_FLOAT, .InputSlot = 0, .AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT, .InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, .InstanceDataStepRate = 0 }),
@@ -440,7 +456,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         const D3D12_PRIMITIVE_TOPOLOGY_TYPE PTT = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
         const D3D12_RT_FORMAT_ARRAY RFA = { .RTFormats = { DXGI_FORMAT_R8G8B8A8_UNORM }, .NumRenderTargets = 1 };
         std::array Exports = { L"VSMain", L"PSMain" };
-        //!< 非const にしておき、.NumSubobjects, .ppSubobjects は後でセットする
+        //!< 非 const にしておき、.NumSubobjects, .ppSubobjects は後でセットする
         D3D12_GENERIC_PROGRAM_DESC GPD = {
            .ProgramName = L"GenericPrograms",
            .NumExports = static_cast<UINT>(std::size(Exports)), .pExports = std::data(Exports),
@@ -448,19 +464,27 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         };
 
         const std::array SSs = {
+            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_INPUT_LAYOUT, .pDesc = &ILD }),
+            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_PRIMITIVE_TOPOLOGY, .pDesc = &PTT }),
+            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS, .pDesc = &RFA }),
+
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_STATE_OBJECT_CONFIG, .pDesc = &SOC }),
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE, .pDesc = &GRS }),
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, .pDesc = &DLD_VS }),
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, .pDesc = &DLD_PS }),
 
-            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_INPUT_LAYOUT, .pDesc = &ILD }),
-            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_PRIMITIVE_TOPOLOGY, .pDesc = &PTT }),
-            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS, .pDesc = &RFA }),
+#if 0
+            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_RASTERIZER, .pDesc = &RD2 }),
+            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_BLEND, .pDesc = &BD }),
+            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL2, .pDesc = &DSD }),
+            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_SAMPLE_MASK, .pDesc = &SM }),
+            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_SAMPLE_DESC, .pDesc = &SD }),
+#endif
 
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_GENERIC_PROGRAM, .pDesc = &GPD }),
         };
         
-        const std::array SSs_GP = { &SSs[4], &SSs[5], &SSs[6] };
+        const std::array SSs_GP = { &SSs[0], &SSs[1], &SSs[2] };
         //!< .NumSubobjects, .ppSubobjects はここでセットする
         GPD.NumSubobjects = static_cast<UINT>(std::size(SSs_GP)); GPD.ppSubobjects = std::data(SSs_GP);
 
@@ -510,7 +534,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             }
             VERIFY_SUCCEEDED(GCL10->Close());
         }
-        //SendMessage(hWnd, WM_PAINT, 0, 0);
     }
         break;
     case WM_KEYDOWN:
