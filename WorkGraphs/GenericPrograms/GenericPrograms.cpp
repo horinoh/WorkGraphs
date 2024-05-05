@@ -352,21 +352,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
        
         //!< バーテックスバッファ
         using PosCol = std::pair<DirectX::XMFLOAT3, DirectX::XMFLOAT3>;
-#if 0
         //!< CCW
         constexpr std::array Vertices = {
             PosCol({{ 0.0f, 0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f } }),
             PosCol({{ -0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f } }),
             PosCol({{ 0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } }),
         };
-#else
-        //!< CW
-        constexpr std::array Vertices = {
-           PosCol({{ 0.0f, 0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f } }),
-           PosCol({{ 0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } }),
-           PosCol({{ -0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f } }),
-        };
-#endif
         CreateDefaultBuffer(Device, sizeof(Vertices), &VertexBuffer);
         const D3D12_VERTEX_BUFFER_VIEW VertexBufferView = {
            .BufferLocation = VertexBuffer->GetGPUVirtualAddress(),
@@ -412,19 +403,35 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
           .NumExports = static_cast<UINT>(std::size(EDs_PS)), .pExports = std::data(EDs_PS)
         };
 
-#if 0
+        //!< ジェネリックプログラムへ指定するもの (デフォルト値で良いものは省略可能)
+        const std::array IEDs = {
+            D3D12_INPUT_ELEMENT_DESC({.SemanticName = "POSITION", .SemanticIndex = 0, .Format = DXGI_FORMAT_R32G32B32_FLOAT, .InputSlot = 0, .AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT, .InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, .InstanceDataStepRate = 0 }),
+            D3D12_INPUT_ELEMENT_DESC({.SemanticName = "COLOR", .SemanticIndex = 0, .Format = DXGI_FORMAT_R32G32B32_FLOAT, .InputSlot = 0, .AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT, .InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, .InstanceDataStepRate = 0 }),
+        };
+        const D3D12_INPUT_LAYOUT_DESC ILD = { .pInputElementDescs = std::data(IEDs), .NumElements = static_cast<UINT>(std::size(IEDs)) };
+        const D3D12_PRIMITIVE_TOPOLOGY_TYPE PTT = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        const D3D12_RT_FORMAT_ARRAY RFA = { .RTFormats = { DXGI_FORMAT_R8G8B8A8_UNORM }, .NumRenderTargets = 1 };
         constexpr D3D12_RASTERIZER_DESC2 RD2 = {
             .FillMode = D3D12_FILL_MODE_SOLID,
             .CullMode = D3D12_CULL_MODE_BACK, .FrontCounterClockwise = TRUE,
             .DepthBias = D3D12_DEFAULT_DEPTH_BIAS, .DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP, .SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS, .DepthClipEnable = TRUE,
             .LineRasterizationMode = D3D12_LINE_RASTERIZATION_MODE_ALIASED,
             .ForcedSampleCount = 0,
-            .ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF 
+            .ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF
         };
         constexpr D3D12_BLEND_DESC BD = {
             .AlphaToCoverageEnable = TRUE,
             .IndependentBlendEnable = FALSE,
-            .RenderTarget = {},
+            .RenderTarget = {
+                D3D12_RENDER_TARGET_BLEND_DESC({
+                    .BlendEnable = FALSE,
+                    .LogicOpEnable = FALSE,
+                    .SrcBlend = D3D12_BLEND_ONE, .DestBlend = D3D12_BLEND_ZERO, .BlendOp = D3D12_BLEND_OP_ADD,
+                    .SrcBlendAlpha = D3D12_BLEND_ONE, .DestBlendAlpha = D3D12_BLEND_ZERO, .BlendOpAlpha = D3D12_BLEND_OP_ADD,
+                    .LogicOp = D3D12_LOGIC_OP_NOOP,
+                    .RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL,
+                }),
+            },
         };
         constexpr D3D12_DEPTH_STENCILOP_DESC1 DSOD = {
             .StencilFailOp = D3D12_STENCIL_OP_KEEP,
@@ -441,20 +448,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             .StencilEnable = FALSE,
             .FrontFace = DSOD,
             .BackFace = DSOD,
-            .DepthBoundsTestEnable = FALSE 
+            .DepthBoundsTestEnable = FALSE
         };
         constexpr UINT SM = D3D12_DEFAULT_SAMPLE_MASK;
         constexpr DXGI_SAMPLE_DESC SD = { .Count = 1, .Quality = 0 };
-#endif
-
-        //!< ジェネリックプログラム
-        const std::array IEDs = {
-            D3D12_INPUT_ELEMENT_DESC({.SemanticName = "POSITION", .SemanticIndex = 0, .Format = DXGI_FORMAT_R32G32B32_FLOAT, .InputSlot = 0, .AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT, .InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, .InstanceDataStepRate = 0 }),
-            D3D12_INPUT_ELEMENT_DESC({.SemanticName = "COLOR", .SemanticIndex = 0, .Format = DXGI_FORMAT_R32G32B32_FLOAT, .InputSlot = 0, .AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT, .InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, .InstanceDataStepRate = 0 }),
-        };
-        const D3D12_INPUT_LAYOUT_DESC ILD = { .pInputElementDescs = std::data(IEDs), .NumElements = static_cast<UINT>(std::size(IEDs)) };
-        const D3D12_PRIMITIVE_TOPOLOGY_TYPE PTT = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        const D3D12_RT_FORMAT_ARRAY RFA = { .RTFormats = { DXGI_FORMAT_R8G8B8A8_UNORM }, .NumRenderTargets = 1 };
         std::array Exports = { L"VSMain", L"PSMain" };
         //!< 非 const にしておき、.NumSubobjects, .ppSubobjects は後でセットする
         D3D12_GENERIC_PROGRAM_DESC GPD = {
@@ -464,27 +461,26 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         };
 
         const std::array SSs = {
-            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_INPUT_LAYOUT, .pDesc = &ILD }),
-            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_PRIMITIVE_TOPOLOGY, .pDesc = &PTT }),
-            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS, .pDesc = &RFA }),
-
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_STATE_OBJECT_CONFIG, .pDesc = &SOC }),
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE, .pDesc = &GRS }),
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, .pDesc = &DLD_VS }),
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY, .pDesc = &DLD_PS }),
 
-#if 0
+            //!< ジェネリックプログラムへ指定するもの
+            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_INPUT_LAYOUT, .pDesc = &ILD }),
+            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_PRIMITIVE_TOPOLOGY, .pDesc = &PTT }),
+            D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS, .pDesc = &RFA }),
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_RASTERIZER, .pDesc = &RD2 }),
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_BLEND, .pDesc = &BD }),
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL2, .pDesc = &DSD }),
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_SAMPLE_MASK, .pDesc = &SM }),
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_SAMPLE_DESC, .pDesc = &SD }),
-#endif
-
+            //!< ジェネリックプログラム
             D3D12_STATE_SUBOBJECT({.Type = D3D12_STATE_SUBOBJECT_TYPE_GENERIC_PROGRAM, .pDesc = &GPD }),
         };
         
-        const std::array SSs_GP = { &SSs[0], &SSs[1], &SSs[2] };
+        //!< ジェネリックプログラムへ指定するもの
+        const std::array SSs_GP = { &SSs[4], &SSs[5], &SSs[6], &SSs[7], &SSs[8], &SSs[9], &SSs[10], &SSs[11] };
         //!< .NumSubobjects, .ppSubobjects はここでセットする
         GPD.NumSubobjects = static_cast<UINT>(std::size(SSs_GP)); GPD.ppSubobjects = std::data(SSs_GP);
 
