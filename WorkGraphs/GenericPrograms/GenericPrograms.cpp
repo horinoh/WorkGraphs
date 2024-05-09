@@ -30,7 +30,7 @@ extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = reinterpret
 #define VERIFY_SUCCEEDED(X) (X) 
 #endif
 
-template<typename T> static constexpr size_t TotalSizeOf(const std::vector<T>& rhs) { return sizeof(T) * size(rhs); }
+template<typename T> static constexpr size_t TotalSizeOf(const std::vector<T>& rhs) { return sizeof(T) * std::size(rhs); }
 template<typename T, size_t U> static constexpr size_t TotalSizeOf(const std::array<T, U>& rhs) { return sizeof(rhs); }
 
 std::vector<CComPtr<ID3D12GraphicsCommandList10>> GraphicsCommandList10s;
@@ -40,6 +40,8 @@ CComPtr<IDXGISwapChain4> SwapChain4;
 std::vector<CComPtr<ID3D12Resource>> SwapChainResources;
 CComPtr<ID3D12RootSignature> RootSignature;
 CComPtr<ID3D12Resource> VertexBuffer;
+CComPtr<ID3D12Resource> IndexBuffer;
+CComPtr<ID3D12Resource> IndirectBuffer;
 
 void CreateBuffer(ID3D12Device* Device, const UINT64 Size, const D3D12_RESOURCE_FLAGS Flags, const D3D12_HEAP_TYPE Type, const D3D12_RESOURCE_STATES State, ID3D12Resource** Resource)
 {
@@ -352,39 +354,84 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
        
         //!< バーテックスバッファ
         using PosCol = std::pair<DirectX::XMFLOAT3, DirectX::XMFLOAT3>;
-        //!< CCW
         constexpr std::array Vertices = {
+            //!< CCW
             PosCol({{ 0.0f, 0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f } }),
             PosCol({{ -0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f } }),
             PosCol({{ 0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f } }),
         };
-        CreateDefaultBuffer(Device, sizeof(Vertices), &VertexBuffer);
+        CreateDefaultBuffer(Device, TotalSizeOf(Vertices), &VertexBuffer);
         const D3D12_VERTEX_BUFFER_VIEW VertexBufferView = {
            .BufferLocation = VertexBuffer->GetGPUVirtualAddress(),
-           .SizeInBytes = sizeof(Vertices),
+           .SizeInBytes = static_cast<UINT>(TotalSizeOf(Vertices)),
            .StrideInBytes = sizeof(Vertices[0]),
         };
-        CComPtr<ID3D12Resource> UploadBuffer_VB;
-        CreateUploadBuffer(Device, sizeof(Vertices), &UploadBuffer_VB);
+        CComPtr<ID3D12Resource> UploadBuffer_Vertex;
+        CreateUploadBuffer(Device, TotalSizeOf(Vertices), &UploadBuffer_Vertex);
         {
             BYTE* Data;
-            VERIFY_SUCCEEDED(UploadBuffer_VB->Map(0, nullptr, reinterpret_cast<void**>(&Data))); {
-                memcpy(Data, std::data(Vertices), sizeof(Vertices));
-            } UploadBuffer_VB->Unmap(0, nullptr);
+            VERIFY_SUCCEEDED(UploadBuffer_Vertex->Map(0, nullptr, reinterpret_cast<void**>(&Data))); {
+                memcpy(Data, std::data(Vertices), TotalSizeOf(Vertices));
+            } UploadBuffer_Vertex->Unmap(0, nullptr);
         }
-        //constexpr std::array Indices = { UINT32(0), UINT32(1), UINT32(2) };
-        //constexpr D3D12_DRAW_INDEXED_ARGUMENTS DIA = {
-        //    .IndexCountPerInstance = static_cast<UINT32>(size(Indices)),
-        //    .InstanceCount = 1,
-        //    .StartIndexLocation = 0,
-        //    .BaseVertexLocation = 0,
-        //    .StartInstanceLocation = 0
-        //};
+
+        //!< インデックスバッファ
+        constexpr std::array Indices = { UINT32(0), UINT32(1), UINT32(2) };
+        CreateDefaultBuffer(Device, TotalSizeOf(Indices), &IndexBuffer);
+        const D3D12_INDEX_BUFFER_VIEW IndexBufferView = {
+            .BufferLocation = IndexBuffer->GetGPUVirtualAddress(),
+            .SizeInBytes = static_cast<UINT>(TotalSizeOf(Indices)),
+            .Format = DXGI_FORMAT_R32_UINT
+        };
+        CComPtr<ID3D12Resource> UploadBuffer_Index;
+        CreateUploadBuffer(Device, TotalSizeOf(Indices), &UploadBuffer_Index);
+        {
+            BYTE* Data;
+            VERIFY_SUCCEEDED(UploadBuffer_Index->Map(0, nullptr, reinterpret_cast<void**>(&Data))); {
+                memcpy(Data, std::data(Indices), TotalSizeOf(Indices));
+            } UploadBuffer_Index->Unmap(0, nullptr);
+        }
+
+        //!< インダイレクトバッファ
+        constexpr D3D12_DRAW_INDEXED_ARGUMENTS DIA = {
+            .IndexCountPerInstance = static_cast<UINT32>(std::size(Indices)),
+            .InstanceCount = 1,
+            .StartIndexLocation = 0,
+            .BaseVertexLocation = 0,
+            .StartInstanceLocation = 0
+        };
+        CreateDefaultBuffer(Device, sizeof(DIA), &IndirectBuffer);
+        CComPtr<ID3D12Resource> UploadBuffer_Indirect;
+        CreateUploadBuffer(Device, sizeof(DIA), &UploadBuffer_Indirect);
+        {
+            BYTE* Data;
+            VERIFY_SUCCEEDED(UploadBuffer_Indirect->Map(0, nullptr, reinterpret_cast<void**>(&Data))); {
+                memcpy(Data, &DIA, sizeof(DIA));
+            } UploadBuffer_Indirect->Unmap(0, nullptr);
+        }
+        constexpr std::array IADs = { 
+            D3D12_INDIRECT_ARGUMENT_DESC({.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED }), 
+        };
+        const D3D12_COMMAND_SIGNATURE_DESC CSD = {
+            .ByteStride = sizeof(DIA),
+            .NumArgumentDescs = static_cast<UINT>(std::size(IADs)), .pArgumentDescs = std::data(IADs), 
+            .NodeMask = 0
+        };
+        CComPtr<ID3D12CommandSignature> CommandSignature;
+        Device->CreateCommandSignature(&CSD, nullptr, IID_PPV_ARGS(&CommandSignature));
+
+        //!< アップロードコマンド発行
         const auto GCL10 = GraphicsCommandList10s[0];
         VERIFY_SUCCEEDED(GCL10->Reset(CommandAllocator, nullptr));
         {
-            GCL10->CopyBufferRegion(VertexBuffer, 0, UploadBuffer_VB, 0, sizeof(Vertices));
+            GCL10->CopyBufferRegion(VertexBuffer, 0, UploadBuffer_Vertex, 0, TotalSizeOf(Vertices));
             Barrier(GCL10, VertexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
+
+            GCL10->CopyBufferRegion(IndexBuffer, 0, UploadBuffer_Index, 0, TotalSizeOf(Indices));
+            Barrier(GCL10, IndexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
+
+            GCL10->CopyBufferRegion(IndirectBuffer, 0, UploadBuffer_Indirect, 0, sizeof(DIA));
+            Barrier(GCL10, IndirectBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ);
         }
         VERIFY_SUCCEEDED(GCL10->Close());
         const std::array CLs = { static_cast<ID3D12CommandList*>(GCL10) };
@@ -457,7 +504,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         D3D12_GENERIC_PROGRAM_DESC GPD = {
            .ProgramName = L"GenericPrograms",
            .NumExports = static_cast<UINT>(std::size(Exports)), .pExports = std::data(Exports),
-           //.NumSubobjects = , .ppSubobjects = //!< ここではセットしない
+           //.NumSubobjects = , .ppSubobjects = //!< ここではまだセットしない (できない)
         };
 
         const std::array SSs = {
@@ -520,11 +567,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
                     constexpr std::array ClearColor = { 0.529411793f, 0.807843208f, 0.921568692f, 1.0f };
                     GCL10->ClearRenderTargetView(SCHandle, std::data(ClearColor), 0, nullptr);
+
                     GCL10->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
                     const std::array VBVs = { VertexBufferView };
                     GCL10->IASetVertexBuffers(0, static_cast<UINT>(std::size(VBVs)), std::data(VBVs));
-
-                    GCL10->DrawInstanced(3, 1, 0, 0);
+                    GCL10->IASetIndexBuffer(&IndexBufferView);
+                   
+                    GCL10->ExecuteIndirect(CommandSignature, 1, IndirectBuffer, 0, nullptr, 0);
                 }
                 Barrier(GCL10, SCRes, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
             }

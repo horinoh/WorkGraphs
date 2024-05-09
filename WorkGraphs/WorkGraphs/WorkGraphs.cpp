@@ -29,7 +29,7 @@ extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = reinterpret
 #define VERIFY_SUCCEEDED(X) (X) 
 #endif
 
-template<typename T> static constexpr size_t TotalSizeOf(const std::vector<T>& rhs) { return sizeof(T) * size(rhs); }
+template<typename T> static constexpr size_t TotalSizeOf(const std::vector<T>& rhs) { return sizeof(T) * std::size(rhs); }
 template<typename T, size_t U> static constexpr size_t TotalSizeOf(const std::array<T, U>& rhs) { return sizeof(rhs); }
 
 // Global Variables:
@@ -427,30 +427,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         constexpr std::array UAVData = { UINT(0),UINT(0), UINT(0), UINT(0), UINT(0), UINT(0), UINT(0), UINT(0) };
         {
             CreateUAVBuffer(TotalSizeOf(UAVData), &UAV);
-#if 0
-            //!< アップロード
-            CComPtr<ID3D12Resource> Upload;
-            const auto Size = TotalSizeOf(UAVData);
-            CreateUploadBuffer(Size, &Upload);
-            std::byte* Data;
-            VERIFY_SUCCEEDED(Upload->Map(0, nullptr, reinterpret_cast<void**>(&Data))); {
-                memcpy(Data, std::data(UAVData), Size);
-            } Upload->Unmap(0, nullptr);
-
-            VERIFY_SUCCEEDED(GCL10->Reset(CA, nullptr)); {
-                Barrier(UAV, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
-                {
-                    GCL10->CopyBufferRegion(UAV, 0, Upload, 0, Size);
-                }
-                Barrier(UAV, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON);
-            }
-            VERIFY_SUCCEEDED(GCL10->Close());
-
-            const std::array CLs = { static_cast<ID3D12CommandList*>(GCL10) };
-            CQ->ExecuteCommandLists(static_cast<UINT>(std::size(CLs)), std::data(CLs));
-
-            WaitForFence();
-#endif
         }
     
         //!< コマンド作成
