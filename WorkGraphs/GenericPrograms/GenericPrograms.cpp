@@ -64,7 +64,15 @@ void CreateBuffer(ID3D12Device* Device, const UINT64 Size, const D3D12_RESOURCE_
     VERIFY_SUCCEEDED(Device->CreateCommittedResource(&HP, D3D12_HEAP_FLAG_NONE, &RD, State, nullptr, IID_PPV_ARGS(Resource)));
 }
 void CreateDefaultBuffer(ID3D12Device* Device, const UINT64 Size, ID3D12Resource** Resource) { CreateBuffer(Device, Size, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_STATE_COMMON, Resource); };
-void CreateUploadBuffer(ID3D12Device* Device, const UINT64 Size, ID3D12Resource** Resource) { CreateBuffer(Device, Size, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_COMMON, Resource); };
+void CreateUploadBuffer(ID3D12Device* Device, const UINT64 Size, ID3D12Resource** Resource, const void* Src = nullptr) {
+    CreateBuffer(Device, Size, D3D12_RESOURCE_FLAG_NONE, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_STATE_COMMON, Resource);
+    if (nullptr != Src) {
+        BYTE* Data;
+        VERIFY_SUCCEEDED((*Resource)->Map(0, nullptr, reinterpret_cast<void**>(&Data))); {
+            memcpy(Data, Src, Size);
+        } (*Resource)->Unmap(0, nullptr);
+    }
+};
 
 void WaitForFence(ID3D12Fence* Fence, ID3D12CommandQueue* CQ)
 {
@@ -367,13 +375,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
            .StrideInBytes = sizeof(Vertices[0]),
         };
         CComPtr<ID3D12Resource> UploadBuffer_Vertex;
-        CreateUploadBuffer(Device, TotalSizeOf(Vertices), &UploadBuffer_Vertex);
-        {
-            BYTE* Data;
-            VERIFY_SUCCEEDED(UploadBuffer_Vertex->Map(0, nullptr, reinterpret_cast<void**>(&Data))); {
-                memcpy(Data, std::data(Vertices), TotalSizeOf(Vertices));
-            } UploadBuffer_Vertex->Unmap(0, nullptr);
-        }
+        CreateUploadBuffer(Device, TotalSizeOf(Vertices), &UploadBuffer_Vertex, std::data(Vertices));
 
         //!< インデックスバッファ
         constexpr std::array Indices = { UINT32(0), UINT32(1), UINT32(2) };
@@ -384,13 +386,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             .Format = DXGI_FORMAT_R32_UINT
         };
         CComPtr<ID3D12Resource> UploadBuffer_Index;
-        CreateUploadBuffer(Device, TotalSizeOf(Indices), &UploadBuffer_Index);
-        {
-            BYTE* Data;
-            VERIFY_SUCCEEDED(UploadBuffer_Index->Map(0, nullptr, reinterpret_cast<void**>(&Data))); {
-                memcpy(Data, std::data(Indices), TotalSizeOf(Indices));
-            } UploadBuffer_Index->Unmap(0, nullptr);
-        }
+        CreateUploadBuffer(Device, TotalSizeOf(Indices), &UploadBuffer_Index, std::data(Indices));
 
         //!< インダイレクトバッファ
         constexpr D3D12_DRAW_INDEXED_ARGUMENTS DIA = {
@@ -402,13 +398,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         };
         CreateDefaultBuffer(Device, sizeof(DIA), &IndirectBuffer);
         CComPtr<ID3D12Resource> UploadBuffer_Indirect;
-        CreateUploadBuffer(Device, sizeof(DIA), &UploadBuffer_Indirect);
-        {
-            BYTE* Data;
-            VERIFY_SUCCEEDED(UploadBuffer_Indirect->Map(0, nullptr, reinterpret_cast<void**>(&Data))); {
-                memcpy(Data, &DIA, sizeof(DIA));
-            } UploadBuffer_Indirect->Unmap(0, nullptr);
-        }
+        CreateUploadBuffer(Device, sizeof(DIA), &UploadBuffer_Indirect, &DIA);
         constexpr std::array IADs = { 
             D3D12_INDIRECT_ARGUMENT_DESC({.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED }), 
         };
